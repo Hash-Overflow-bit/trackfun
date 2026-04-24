@@ -249,8 +249,8 @@ export async function GET(req: NextRequest) {
 
     if (needsRefresh) {
       try {
-        const { fetchActiveMarkets } = await import("@/lib/polymarket");
-        const markets = await fetchActiveMarkets({ limit: 30, orderBy: "volume" });
+        const { fetchMarkets } = await import("@/lib/polymarket");
+        const markets = await fetchMarkets({ limit: 30, orderBy: "volume", active: true });
         for (const m of markets) {
           await prisma.marketCache.upsert({
             where: { id: m.id },
