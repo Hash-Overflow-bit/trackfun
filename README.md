@@ -70,27 +70,8 @@ Copy the template:
 cp .env.example .env.local
 ```
 
-Then open `.env.local` and fill in the Privy credentials. Get them from the
-[Privy Dashboard](https://dashboard.privy.io/).
 
-```dotenv
-# === Privy ===
-# Public. Safe to expose.
-NEXT_PUBLIC_PRIVY_APP_ID=<PASTE_PRIVY_APP_ID_HERE>
 
-# Optional. Only needed if your Privy app requires it.
-NEXT_PUBLIC_PRIVY_CLIENT_ID=<PASTE_PRIVY_CLIENT_ID_HERE_OR_LEAVE_BLANK>
-
-# SERVER-SIDE ONLY. Never commit, never expose.
-PRIVY_APP_SECRET=<PASTE_PRIVY_APP_SECRET_HERE>
-
-# === Polymarket ===
-# Public API. You don't need to change this.
-POLYMARKET_GAMMA_URL=https://gamma-api.polymarket.com
-
-# Client-side polling interval in ms (default 30s).
-NEXT_PUBLIC_POLYMARKET_REFRESH_MS=30000
-```
 
 **If you don't paste Privy credentials:** the app still renders, but login is
 disabled and the header shows an "Auth not configured" badge. This is
