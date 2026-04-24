@@ -103,7 +103,7 @@ export async function runDepositIndexer(): Promise<IndexerResult> {
         transfersScanned = logs.length;
 
         for (const log of logs) {
-          const decoded = decodeEventLog({
+          const decoded: any = decodeEventLog({
             abi: [USDC_TRANSFER_ABI],
             data: log.data,
             topics: log.topics,
