@@ -1266,7 +1266,7 @@ function ActivityRow({ a, onOpenBot, onBack, isFollowing }: any) {
 // ============================================================
 function MarketsView({ markets, bots, onSelectMarket, selectedMarket }: any) {
   const [cat, setCat] = useState("all");
-  const cats: string[] = ["all", ...new Set(markets.map((m: any) => m.category as string))];
+  const cats: string[] = ["all", ...new Set<string>(markets.map((m: any) => m.category as string))];
   const filtered = cat === "all" ? markets : markets.filter((m: any) => m.category === cat);
 
   if (selectedMarket) return <MarketDetailView market={selectedMarket} bots={bots} onBack={() => onSelectMarket(null)} />;
