@@ -1,0 +1,448 @@
+// ============================================================
+// Track.fun Prisma schema.
+// Target: Supabase Postgres.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ------------------------------------------------------------
+// USERS
+// ------------------------------------------------------------
+// Identity is Privy DID. We upsert on first API call from an
+// authenticated user so there's no separate "signup" flow.
+model User {
+  id          String   @id                    // Privy DID, e.g. "did:privy:abc123"
+  email       String?
+  walletAddr  String?
+  displayName String?
+  isAdmin     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  bots          Bot[]
+  backings      Backing[]
+  notifications Notification[]
+  balance       UserBalance?
+  investments   BotInvestment[]
+  ledgerEntries UserBalanceLedger[]
+  depositAddress DepositAddress?
+  deposits      Deposit[]
+
+  @@index([createdAt])
+}
+
+// ------------------------------------------------------------
+// BOTS
+// ------------------------------------------------------------
+// Both seed bots (ownerId = null) and user-created bots.
+// Lifecycle: new → rising → pro.
+//   - "new" bots trade in simulation only with a $1,000 virtual bankroll
+//   - "rising" bots are approaching migration thresholds
+//   - "pro" bots can receive real user investment
+model Bot {
+  id            String   @id @default(cuid())
+  ownerId       String?                       // null = seed/house bot
+  name          String
+  emoji         String   @default("🤖")
+  bio           String   @default("")
+  strategy      String   @default("custom")   // momentum | contrarian | macro | chaos | oracle | sniper | custom
+  strategyText  String   @default("")
+  risk          Float    @default(0.5)        // 0..1
+
+  // ------ SIMULATION LAYER (track record) ------
+  // This is the bot's $1,000 virtual performance bankroll.
+  // Completely separate from investor capital (see BotInvestment table).
+  simBankroll   Float    @default(1000)       // current virtual balance
+  simStartBankroll Float @default(1000)       // always 1000 — track record baseline
+  pnl           Float    @default(0)          // cumulative return as fraction (0.42 = +42%)
+  winRate       Float    @default(0.5)
+  trades        Int      @default(0)
+  streak        Int      @default(0)
+  level         Int      @default(1)
+  xp            Int      @default(0)
+  followers     Int      @default(0)
+
+  // ------ MIGRATION ------
+  status        String   @default("new")      // new | rising | pro
+  migratedAt    DateTime?                     // timestamp of pro promotion
+
+  // ------ Metadata ------
+  isSeed        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  lastTickAt    DateTime @default(now())
+
+  owner         User?            @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  backings      Backing[]
+  tradeRecords  TradeRecord[]
+  spreadRevenue SpreadRevenue[]
+  performance   BotPerformance[]
+  investments   BotInvestment[]
+
+  @@index([ownerId])
+  @@index([pnl])
+  @@index([followers])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ------------------------------------------------------------
+// BACKINGS
+// ------------------------------------------------------------
+// A user commits virtual capital to a bot. PnL mirrors the bot.
+model Backing {
+  id        String   @id @default(cuid())
+  userId    String
+  botId     String
+  amount    Float                              // virtual USD
+  backedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bot  Bot  @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, botId])                    // one row per user-bot pair
+  @@index([botId])
+  @@index([userId])
+}
+
+// ------------------------------------------------------------
+// NOTIFICATIONS
+// ------------------------------------------------------------
+model Notification {
+  id         String   @id @default(cuid())
+  userId     String                            // null = global/broadcast
+  kind       String                            // bot_launched | promotion | big_win | big_loss | arena_starting | follower_milestone | back_confirmed
+  title      String
+  body       String?
+  botId      String?
+  botName    String?
+  botEmoji   String?
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([createdAt])
+}
+
+// ------------------------------------------------------------
+// TRADE RECORDS
+// ------------------------------------------------------------
+// Every server-side fill from the spread engine.
+model TradeRecord {
+  id              String   @id @default(cuid())
+  botId           String
+  marketId        String
+  side            String                       // BUY | SELL
+  outcome         String                       // YES | NO
+  size            Float
+  referencePrice  Float
+  executionPrice  Float
+  spreadAmount    Float
+  pnl             Float?
+  createdAt       DateTime @default(now())
+
+  bot Bot @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@index([botId, createdAt])
+  @@index([marketId])
+  @@index([createdAt])
+}
+
+// ------------------------------------------------------------
+// SPREAD REVENUE
+// ------------------------------------------------------------
+// Every fill contributes. Queryable by bot, market, time window.
+model SpreadRevenue {
+  id         BigInt   @id @default(autoincrement())
+  botId      String
+  marketId   String
+  amount     Float
+  createdAt  DateTime @default(now())
+
+  bot Bot @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@index([botId])
+  @@index([marketId])
+  @@index([createdAt])
+}
+
+// ------------------------------------------------------------
+// FEED EVENTS
+// ------------------------------------------------------------
+// The live feed the UI reads. Cron writes here during ticks.
+model FeedEvent {
+  id         String   @id @default(cuid())
+  type       String                           // trade | launch | milestone | promotion | follow
+  botId      String?
+  botName    String
+  botEmoji   String
+  botStrategy String?
+  marketId   String?
+  marketTitle String?
+  side       String?
+  price      Float?
+  size       Float?
+  pnl        Float?
+  pnlImpact  Float?
+  confidence String?
+  drama      String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([type, createdAt])
+}
+
+// ------------------------------------------------------------
+// MARKETS CACHE
+// ------------------------------------------------------------
+// We cache Polymarket data so the UI loads fast and we don't
+// hammer their API. The cron refreshes this periodically.
+model MarketCache {
+  id           String   @id                    // Polymarket conditionId or slug
+  title        String
+  category     String?
+  yesPrice     Float
+  volume       Float    @default(0)
+  liquidity    Float    @default(0)
+  endDate      DateTime?
+  change24h    Float    @default(0)
+  slug         String?
+  active       Boolean  @default(true)
+  closed       Boolean  @default(false)
+  raw          Json?                           // full Polymarket payload
+  fetchedAt    DateTime @default(now())
+
+  @@index([active, closed])
+  @@index([volume])
+  @@index([fetchedAt])
+}
+
+// ------------------------------------------------------------
+// RATE LIMIT
+// ------------------------------------------------------------
+// Simple postgres-backed rate limiter. Not as fast as Redis
+// but sufficient for launch scale and keeps infra minimal.
+model RateLimitBucket {
+  key        String   @id                      // e.g. "execute:{userId}:{minute}"
+  count      Int      @default(0)
+  resetAt    DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([resetAt])
+}
+
+// ============================================================
+// INVESTMENT LIFECYCLE MODELS
+// ============================================================
+
+// ------------------------------------------------------------
+// BOT PERFORMANCE — equity curve snapshots
+// ------------------------------------------------------------
+// Time-series of the bot's virtual bankroll during simulation.
+// Used for charts, leaderboards, and migration criteria.
+// Cron writes one snapshot per bot per tick.
+model BotPerformance {
+  id           BigInt   @id @default(autoincrement())
+  botId        String
+  bankroll     Float                              // virtual sim bankroll at this point
+  pnl          Float                              // cumulative return as fraction
+  trades       Int                                // cumulative trade count
+  winRate      Float
+  createdAt    DateTime @default(now())
+
+  bot Bot @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@index([botId, createdAt])
+  @@index([createdAt])
+}
+
+// ------------------------------------------------------------
+// USER BALANCE
+// ------------------------------------------------------------
+// NOTE: This currently holds *virtual* deposits. Real-money
+// support is NOT enabled until (a) Stripe Connect integration,
+// (b) KYC provider integration, and (c) legal review of the
+// investment vehicle structure. The schema is identical either
+// way — only /api/balance/deposit changes.
+model UserBalance {
+  userId       String   @id
+  available    Float    @default(0)              // cash available to invest
+  invested     Float    @default(0)              // sum of current BotInvestments
+  totalDeposited Float  @default(0)              // lifetime deposits
+  totalWithdrawn Float  @default(0)              // lifetime withdrawals
+  currency     String   @default("USD_VIRTUAL")  // change to "USD" when real-money enabled
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ------------------------------------------------------------
+// USER BALANCE LEDGER — append-only audit trail
+// ------------------------------------------------------------
+// Every change to UserBalance.available has a corresponding row
+// here. This is the source of truth for accounting; the balance
+// field is a cached sum.
+model UserBalanceLedger {
+  id           BigInt   @id @default(autoincrement())
+  userId       String
+  kind         String                              // deposit | withdraw | invest | divest | fee | pnl_mark
+  amount       Float                               // signed: positive = credit, negative = debit
+  balanceAfter Float                               // available balance after this entry
+  refType      String?                             // "investment" | "deposit" | ...
+  refId        String?                             // FK to BotInvestment / Deposit etc.
+  note         String?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([kind])
+}
+
+// ------------------------------------------------------------
+// BOT INVESTMENT — real user capital allocated to a Pro bot
+// ------------------------------------------------------------
+// Distinct from Backing. Backings are social/fantasy. Investments
+// are real capital (virtual for now, real post-launch) with P&L,
+// fees, and exit flows.
+model BotInvestment {
+  id             String   @id @default(cuid())
+  userId         String
+  botId          String
+  principal      Float                            // original investment amount (after fee)
+  entryFeePaid   Float    @default(0)             // platform fee at entry
+  sharesIssued   Float                            // units of the bot's investable pool the user holds
+  currentValue   Float                            // marked-to-market value
+  createdAt      DateTime @default(now())
+  closedAt       DateTime?                        // null = open, set on divest
+  status         String   @default("open")        // open | closed
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bot  Bot  @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([botId, status])
+  @@index([createdAt])
+}
+
+// ------------------------------------------------------------
+// BOT INVESTMENT POOL — aggregate capital per bot
+// ------------------------------------------------------------
+// One row per investable bot. Tracks total capital + unit
+// accounting so multiple investors share P&L proportionally.
+//
+// When a user invests $X:
+//   shares = X / (pool.totalValue / pool.totalShares)
+//   (or, on empty pool, shares = X)
+// When the bot's track record moves, we update pool.totalValue
+// (principal * (1 + bot.pnlSinceInvestorJoined)).
+model BotInvestmentPool {
+  botId           String   @id
+  totalPrincipal  Float    @default(0)            // sum of all open principals
+  totalValue      Float    @default(0)            // marked-to-market total
+  totalShares     Float    @default(0)            // outstanding units
+  investorCount   Int      @default(0)            // number of open investors
+  updatedAt       DateTime @updatedAt
+}
+
+// ------------------------------------------------------------
+// PLATFORM REVENUE — all fees tracked here
+// ------------------------------------------------------------
+// Separate from SpreadRevenue so investment fees vs spread
+// revenue are queryable independently.
+model PlatformRevenue {
+  id         BigInt   @id @default(autoincrement())
+  source     String                              // entry_fee | exit_fee | spread | mgmt_fee
+  amount     Float
+  userId     String?                             // who paid
+  botId      String?                             // on which bot
+  refType    String?                             // "investment" | "trade" | ...
+  refId      String?                             // FK
+  createdAt  DateTime @default(now())
+
+  @@index([source, createdAt])
+  @@index([createdAt])
+}
+
+// ============================================================
+// CRYPTO DEPOSIT MODELS
+// ============================================================
+
+// ------------------------------------------------------------
+// DEPOSIT ADDRESS
+// ------------------------------------------------------------
+// Each user gets ONE deposit address per (chain, token). Currently
+// only USDC on Base is supported. Address is a Privy embedded
+// wallet belonging to the user — we just watch it.
+model DepositAddress {
+  id          String   @id @default(cuid())
+  userId      String   @unique           // one addr per user (for USDC/Base)
+  address     String   @unique           // lowercased
+  chain       String   @default("base")  // base | polygon | ethereum | ...
+  token       String   @default("USDC")
+  privyWalletId String?                  // Privy wallet ID if created via Privy
+  createdAt   DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deposits Deposit[]
+
+  @@index([address])
+  @@index([chain])
+}
+
+// ------------------------------------------------------------
+// DEPOSIT
+// ------------------------------------------------------------
+// A single on-chain deposit event. Keyed by (txHash, logIndex)
+// so we NEVER double-credit even if the indexer re-runs.
+//
+// Lifecycle: detected → confirming (N confirmations) → confirmed → credited
+model Deposit {
+  id             String   @id @default(cuid())
+  userId         String
+  depositAddressId String
+  txHash         String                   // on-chain tx hash
+  logIndex       Int                      // the transfer event's index in the tx
+  fromAddress    String
+  toAddress      String                   // = depositAddress.address
+  chain          String                   // base
+  token          String                   // USDC
+  amountRaw      String                   // string to avoid precision loss (token smallest unit)
+  amountUsd      Float                    // float for display; USDC is 1:1 USD
+  blockNumber    BigInt
+  blockTimestamp DateTime
+  confirmations  Int      @default(0)
+  status         String   @default("detected")  // detected | confirming | confirmed | credited | rejected
+  creditedAt     DateTime?
+  ledgerRefId    String?                  // FK to UserBalanceLedger once credited
+  detectedAt     DateTime @default(now())
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  depositAddress DepositAddress @relation(fields: [depositAddressId], references: [id], onDelete: Cascade)
+
+  // The (txHash, logIndex) pair is unique per transfer event.
+  @@unique([txHash, logIndex])
+  @@index([userId, detectedAt])
+  @@index([status])
+  @@index([blockNumber])
+}
+
+// ------------------------------------------------------------
+// INDEXER CURSOR
+// ------------------------------------------------------------
+// The indexer tracks the last block it scanned so it can resume.
+// One row per chain.
+model IndexerCursor {
+  chain       String   @id                // "base"
+  lastBlock   BigInt                      // last block scanned
+  updatedAt   DateTime @updatedAt
+}
