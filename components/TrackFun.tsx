@@ -1266,8 +1266,8 @@ function ActivityRow({ a, onOpenBot, onBack, isFollowing }: any) {
 // ============================================================
 function MarketsView({ markets, bots, onSelectMarket, selectedMarket }: any) {
   const [cat, setCat] = useState("all");
-  const cats = ["all", ...new Set(markets.map(m => m.category))];
-  const filtered = cat === "all" ? markets : markets.filter(m => m.category === cat);
+  const cats: string[] = ["all", ...new Set(markets.map((m: any) => m.category as string))];
+  const filtered = cat === "all" ? markets : markets.filter((m: any) => m.category === cat);
 
   if (selectedMarket) return <MarketDetailView market={selectedMarket} bots={bots} onBack={() => onSelectMarket(null)} />;
 
@@ -1280,13 +1280,13 @@ function MarketsView({ markets, bots, onSelectMarket, selectedMarket }: any) {
         </div>
         <div className="flex items-center gap-4 text-xs font-mono">
           <Stat label="Markets" value={markets.length} />
-          <Stat label="24h Volume" value={"$" + fmt(markets.reduce((s, m) => s + m.vol, 0))} />
-          <Stat label="Liquidity" value={"$" + fmt(markets.reduce((s, m) => s + m.liquidity, 0))} />
+          <Stat label="24h Volume" value={"$" + fmt(markets.reduce((s: number, m: any) => s + m.vol, 0))} />
+          <Stat label="Liquidity" value={"$" + fmt(markets.reduce((s: number, m: any) => s + m.liquidity, 0))} />
         </div>
       </div>
 
       <div className="flex gap-2 mb-6 overflow-x-auto scrollbar-thin pb-1">
-        {cats.map(c => (
+        {cats.map((c: string) => (
           <button key={c} onClick={() => setCat(c)}
             className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
               cat === c ? "bg-lime-400 text-black" : "bg-zinc-800/60 text-zinc-400 hover:text-zinc-100"
