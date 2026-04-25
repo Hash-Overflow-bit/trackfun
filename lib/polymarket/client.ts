@@ -126,11 +126,15 @@ export async function fetchMarkets(
     headers["x-api-key"] = process.env.POLYMARKET_API_KEY;
   }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout for Vercel
+
   const res = await fetch(url, {
     headers,
-    // Cache for 20s on the Next.js data cache layer.
-    next: { revalidate: 20 },
+    signal: controller.signal,
+    cache: "no-store",
   });
+  clearTimeout(timeout);
   if (!res.ok) {
     throw new Error(`Polymarket Gamma returned ${res.status}: ${res.statusText}`);
   }
@@ -163,10 +167,15 @@ export async function fetchMarketById(
     headers["x-api-key"] = process.env.POLYMARKET_API_KEY;
   }
 
+  const controller2 = new AbortController();
+  const timeout2 = setTimeout(() => controller2.abort(), 8000);
+
   const res = await fetch(url, {
     headers,
-    next: { revalidate: 20 },
+    signal: controller2.signal,
+    cache: "no-store",
   });
+  clearTimeout(timeout2);
 
   if (!res.ok) return null;
 

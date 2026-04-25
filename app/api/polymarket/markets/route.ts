@@ -14,7 +14,7 @@ import { NextResponse } from "next/server";
 import { fetchMarkets } from "@/lib/polymarket";
 import { prisma } from "@/lib/db";
 
-export const revalidate = 20;
+export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
