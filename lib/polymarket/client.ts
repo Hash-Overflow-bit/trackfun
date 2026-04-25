@@ -121,8 +121,13 @@ export async function fetchMarkets(
   opts: FetchMarketsOptions = {}
 ): Promise<TrackFunMarket[]> {
   const url = buildMarketsUrl(opts);
+  const headers: Record<string, string> = { accept: "application/json" };
+  if (process.env.POLYMARKET_API_KEY) {
+    headers["x-api-key"] = process.env.POLYMARKET_API_KEY;
+  }
+
   const res = await fetch(url, {
-    headers: { accept: "application/json" },
+    headers,
     // Cache for 20s on the Next.js data cache layer.
     next: { revalidate: 20 },
   });
@@ -153,8 +158,13 @@ export async function fetchMarketById(
   params.set("slug", idOrSlug);
   const url = `${GAMMA_URL}/markets?${params.toString()}&limit=1`;
 
+  const headers: Record<string, string> = { accept: "application/json" };
+  if (process.env.POLYMARKET_API_KEY) {
+    headers["x-api-key"] = process.env.POLYMARKET_API_KEY;
+  }
+
   const res = await fetch(url, {
-    headers: { accept: "application/json" },
+    headers,
     next: { revalidate: 20 },
   });
 
