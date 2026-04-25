@@ -1,8 +1,9 @@
 {
+  "buildCommand": "npx prisma generate && npx next build",
   "crons": [
     {
       "path": "/api/cron/tick",
-      "schedule": "0 0 * * *"
+      "schedule": "* * * * *"
     }
   ]
 }
