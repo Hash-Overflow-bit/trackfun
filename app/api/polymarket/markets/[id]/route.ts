@@ -32,6 +32,7 @@ export async function GET(
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[Track.fun] Polymarket Detail API Error for ${params.id}:`, err);
     return NextResponse.json(
       { error: "Failed to fetch market", detail: message },
       { status: 502 }

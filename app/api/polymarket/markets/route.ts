@@ -28,18 +28,23 @@ export async function GET(request: Request) {
 
     // Serve from MarketCache (populated by cron) when available
     const cacheAge = 5 * 60_000; // 5 min
-    const cached = await prisma.marketCache.findMany({
-      where: {
-        active: true,
-        closed: false,
-        fetchedAt: { gt: new Date(Date.now() - cacheAge) },
-      },
-      orderBy:
-        orderBy === "liquidity" ? { liquidity: "desc" }
-        : orderBy === "createdAt" ? { fetchedAt: "desc" }
-        : { volume: "desc" },
-      take: limit,
-    });
+    let cached: any[] = [];
+    try {
+      cached = await prisma.marketCache.findMany({
+        where: {
+          active: true,
+          closed: false,
+          fetchedAt: { gt: new Date(Date.now() - cacheAge) },
+        },
+        orderBy:
+          orderBy === "liquidity" ? { liquidity: "desc" }
+          : orderBy === "createdAt" ? { fetchedAt: "desc" }
+          : { volume: "desc" },
+        take: limit,
+      });
+    } catch (dbErr) {
+      console.warn("[Track.fun] MarketCache lookup failed, falling back to live API:", dbErr);
+    }
 
     if (cached.length >= Math.min(limit, 10)) {
       return NextResponse.json(
@@ -73,6 +78,7 @@ export async function GET(request: Request) {
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("[Track.fun] Polymarket API Route Error:", err);
     return NextResponse.json(
       { error: "Failed to fetch markets", detail: message },
       { status: 502 }
