@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
   try {
     // FETCH DIRECTLY FROM POLYMARKET (Ignoring database cache)
@@ -28,14 +28,17 @@ export async function GET(
         headers: {
           "Cache-Control": "public, s-maxage=20, stale-while-revalidate=60",
         },
-      }
+      },
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error(`[Track.fun] Polymarket Detail API Error for ${params.id}:`, err);
+    console.error(
+      `[Track.fun] Polymarket Detail API Error for ${params.id}:`,
+      err,
+    );
     return NextResponse.json(
       { error: "Failed to fetch market", detail: message },
-      { status: 502 }
+      { status: 502 },
     );
   }
 }
