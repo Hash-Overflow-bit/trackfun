@@ -26,54 +26,17 @@ export async function GET(request: Request) {
         ? orderByParam
         : "volume";
 
-    // Serve from MarketCache (populated by cron) when available
-    const cacheAge = 5 * 60_000; // 5 min
-    let cached: any[] = [];
-    try {
-      cached = await prisma.marketCache.findMany({
-        where: {
-          active: true,
-          closed: false,
-          fetchedAt: { gt: new Date(Date.now() - cacheAge) },
-        },
-        orderBy:
-          orderBy === "liquidity" ? { liquidity: "desc" }
-          : orderBy === "createdAt" ? { fetchedAt: "desc" }
-          : { volume: "desc" },
-        take: limit,
-      });
-    } catch (dbErr) {
-      console.warn("[Track.fun] MarketCache lookup failed, falling back to live API:", dbErr);
-    }
-
-    if (cached.length >= Math.min(limit, 10)) {
-      return NextResponse.json(
-        {
-          markets: cached.map(m => ({
-            id: m.id,
-            title: m.title,
-            category: m.category,
-            yesPrice: m.yesPrice,
-            volume: m.volume,
-            liquidity: m.liquidity,
-            endDate: m.endDate?.toISOString() ?? null,
-            change24h: m.change24h,
-            slug: m.slug,
-            active: m.active,
-            closed: m.closed,
-          })),
-          count: cached.length,
-          fetchedAt: Date.now(),
-          source: "cache",
-        },
-        { headers: { "Cache-Control": "public, s-maxage=20, stale-while-revalidate=60" } }
-      );
-    }
-
-    // Cache empty/stale — fall back to live Polymarket
+    // FETCH DIRECTLY FROM POLYMARKET (Ignoring database cache)
+    console.log("[Track.fun] Fetching live data from Polymarket using API Key...");
     const markets = await fetchMarkets({ limit, orderBy, active: true });
+    
     return NextResponse.json(
-      { markets, count: markets.length, fetchedAt: Date.now(), source: "live" },
+      { 
+        markets, 
+        count: markets.length, 
+        fetchedAt: Date.now(), 
+        source: "live" 
+      },
       { headers: { "Cache-Control": "public, s-maxage=20, stale-while-revalidate=60" } }
     );
   } catch (err) {

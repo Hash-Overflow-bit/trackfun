@@ -15,15 +15,15 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const id = decodeURIComponent(params.id);
-    const market = await fetchMarketById(id);
+    // FETCH DIRECTLY FROM POLYMARKET (Ignoring database cache)
+    const market = await fetchMarketById(params.id);
 
     if (!market) {
       return NextResponse.json({ error: "Market not found" }, { status: 404 });
     }
 
     return NextResponse.json(
-      { market, fetchedAt: Date.now() },
+      { market, fetchedAt: Date.now(), source: "live" },
       {
         headers: {
           "Cache-Control": "public, s-maxage=20, stale-while-revalidate=60",
