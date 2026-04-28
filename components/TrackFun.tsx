@@ -29,12 +29,19 @@ import { UserAccountView } from "./UserAccountView";
 // UTILITIES
 // ============================================================
 const fmt = (n) => {
-  if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(2) + "M";
-  if (Math.abs(n) >= 1e3) return (n / 1e3).toFixed(1) + "k";
-  return n.toFixed(0);
+  const val = Number(n || 0);
+  if (Math.abs(val) >= 1e6) return (val / 1e6).toFixed(2) + "M";
+  if (Math.abs(val) >= 1e3) return (val / 1e3).toFixed(1) + "k";
+  return val.toFixed(0);
 };
-const fmtPct = (n) => (n >= 0 ? "+" : "") + (n * 100).toFixed(1) + "%";
-const fmtPrice = (n) => (n * 100).toFixed(0) + "¢";
+const fmtPct = (n) => {
+  const val = Number(n || 0);
+  return (val >= 0 ? "+" : "") + (val * 100).toFixed(1) + "%";
+};
+const fmtPrice = (n) => {
+  const val = Number(n || 0);
+  return (val * 100).toFixed(0) + "¢";
+};
 const rid = () => Math.random().toString(36).slice(2, 10);
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const randBetween = (a, b) => a + Math.random() * (b - a);
@@ -156,7 +163,7 @@ function TrackFunInner({ apiBots, apiFeed, botsLoading, refetchBots }: any) {
   const [view, setView] = useState("feed");
   const [selectedBot, setSelectedBot] = useState(null);
   const [selectedMarket, setSelectedMarket] = useState(null);
-  const { pushToast, refetchAll } = useAppState();
+  const { pushToast, refetchAll, isAdmin } = useAppState();
   const { createBot: createBotApi } = useActions();
 
   // Live market data from Polymarket (with seed fallback)
@@ -170,13 +177,15 @@ function TrackFunInner({ apiBots, apiFeed, botsLoading, refetchBots }: any) {
   const [markets, setMarkets] = useState(liveMarkets);
   useEffect(() => { setMarkets(liveMarkets); }, [liveMarkets]);
 
-  // Bots come from API now. Map them into the shape the existing UI expects.
-  const bots = useMemo(() => (apiBots ?? []).map((b: any) => ({
+  const mapBot = useCallback((b: any) => ({
     ...b,
     createdAt: b.createdAt,
     badges: b.badges ?? [],
-    perfHistory: b.perfHistory ?? Array.from({ length: 30 }, (_, i) => b.pnl * (i + 1) / 30 + (Math.random() - 0.5) * 0.05),
-  })), [apiBots]);
+    perfHistory: b.perfHistory ?? Array.from({ length: 30 }, (_, i) => (b.pnl ?? 0) * (i + 1) / 30 + (Math.random() - 0.5) * 0.05),
+  }), []);
+
+  // Bots come from API now. Map them into the shape the existing UI expects.
+  const bots = useMemo(() => (apiBots ?? []).map(mapBot), [apiBots, mapBot]);
 
   // Feed events come from API. Map into activity items the UI expects.
   const activity = useMemo(() => (apiFeed ?? []).map((e: any) => ({
@@ -347,10 +356,10 @@ function TrackFunInner({ apiBots, apiFeed, botsLoading, refetchBots }: any) {
         {view === "markets" && <MarketsView markets={markets} bots={bots} onSelectMarket={setSelectedMarket} selectedMarket={selectedMarket} />}
         {view === "leaderboard" && <LeaderboardView bots={bots} onOpenBot={openBot} following={following} toggleFollow={toggleFollow} onOpenBack={setBackModalBot} />}
         {view === "tournaments" && <TournamentsView tournaments={tournaments} bots={bots} onOpenBot={openBot} />}
-        {view === "profile" && selectedBot && <BotProfileView bot={bots.find((b:any)=>b.id===selectedBot.id) ?? selectedBot} bots={bots} onBack={() => setView("feed")} toggleFollow={toggleFollow} following={following} activity={activity} markets={markets} onOpenBack={setBackModalBot} onOpenInvest={setInvestModalBot} />}
+        {view === "profile" && selectedBot && <BotProfileView bot={bots.find((b:any)=>b.id===selectedBot.id) ?? mapBot(selectedBot)} bots={bots} onBack={() => setView("feed")} toggleFollow={toggleFollow} following={following} activity={activity} markets={markets} onOpenBack={setBackModalBot} onOpenInvest={setInvestModalBot} />}
         {view === "create" && <CreateBotView onCreate={createBot} onDone={(bot) => { setSelectedBot(bot); setView("profile"); }} onCancel={() => setView("feed")} />}
         {view === "me" && <MeView bots={bots} onOpenBot={openBot} onCreateBot={() => setView("create")} onOpenBack={setBackModalBot} setView={setView} />}
-        {view === "admin" && <AdminView bots={bots} markets={markets} setBots={setBots} setMarkets={setMarkets} />}
+        {view === "admin" && isAdmin && <AdminView bots={bots} markets={markets} setBots={setBots} setMarkets={setMarkets} />}
       </main>
 
       {/* Global overlays */}
@@ -440,8 +449,9 @@ function TopBar({ view, setView, notifOpen, setNotifOpen, liveMode, setLiveMode,
     { key: "leaderboard", label: "Leaderboard", icon: Trophy },
     { key: "tournaments", label: "Arenas", icon: Swords },
     { key: "me", label: "Me", icon: UserIcon },
-    { key: "admin", label: "Admin", icon: Settings },
+    { key: "admin", label: "Admin", icon: Settings, adminOnly: true },
   ];
+  const { isAdmin } = useAppState();
   return (
     <header className="sticky top-0 z-40 backdrop-blur-xl bg-black/60 border-b border-zinc-800/60">
       <div className="max-w-[1600px] mx-auto px-4 lg:px-6 h-16 flex items-center gap-3 lg:gap-5">
@@ -450,7 +460,7 @@ function TopBar({ view, setView, notifOpen, setNotifOpen, liveMode, setLiveMode,
         </button>
 
         <nav className="flex items-center gap-1 shrink-0">
-          {navItems.map(item => {
+          {navItems.filter(item => !item.adminOnly || isAdmin).map(item => {
             const Icon = item.icon;
             const active = view === item.key;
             return (
@@ -1704,7 +1714,7 @@ function BotProfileView({ bot, bots, onBack, toggleFollow, following, activity, 
               <h1 className="font-display text-4xl mb-1">{bot.name}</h1>
               <p className="text-sm text-zinc-300 italic font-serif-i mb-3">"{bot.bio}"</p>
               <div className="flex flex-wrap gap-1.5 mb-4">
-                {bot.badges.map((bd, i) => (
+                {(bot.badges ?? []).map((bd, i) => (
                   <span key={i} className="flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full bg-black/40 border border-zinc-700">
                     <span>{bd.icon}</span>{bd.label}
                   </span>
@@ -1754,7 +1764,7 @@ function BotProfileView({ bot, bots, onBack, toggleFollow, following, activity, 
           <div className={`font-mono font-bold text-2xl ${bot.pnl >= 0 ? "text-lime-400" : "text-rose-400"}`}>
             {fmtPct(bot.pnl)}
           </div>
-          <div className="text-[10px] font-mono text-zinc-500 mt-0.5">from $1,000 simulation</div>
+          <div className="text-[10px] font-mono text-zinc-500 mt-0.5">from $10,000 simulation</div>
         </div>
         <div className="p-3 rounded-lg bg-black/30 border border-zinc-800">
           <div className="text-[9px] uppercase font-mono tracking-widest text-zinc-500">Sim Bankroll</div>
@@ -1850,7 +1860,7 @@ function BotProfileView({ bot, bots, onBack, toggleFollow, following, activity, 
                 ))}
               </div>
             </div>
-            <PriceChart history={bot.perfHistory.map(p => p + 1).map(p => p / 2 + 0.25)} yesPrice={bot.pnl} />
+            <PriceChart history={(bot.perfHistory ?? []).map(p => p + 1).map(p => p / 2 + 0.25)} yesPrice={bot.pnl} />
           </div>
 
           {/* Reasoning feed */}

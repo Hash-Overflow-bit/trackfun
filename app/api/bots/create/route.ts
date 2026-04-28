@@ -5,11 +5,14 @@ import { checkRateLimit } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
-const ALLOWED_STRATEGIES = ["momentum", "contrarian", "macro", "chaos", "oracle", "sniper", "custom"];
+const ALLOWED_STRATEGIES = [
+  "trend", "contrarian", "news", "underdog", "yolo", "quant", "macro-fade", 
+  "arbitrage", "value", "copy", "random", "night", "conservative", "custom"
+];
 
 export const POST = withAuth(async (req, user) => {
-  // Rate limit: max 5 bot creations per user per hour
-  const allowed = await checkRateLimit(`bot-create:${user.id}`, 5, 3600);
+  // Rate limit: max 20 bot creations per user per hour
+  const allowed = await checkRateLimit(`bot-create:${user.id}`, 20, 3600);
   if (!allowed) {
     return NextResponse.json(
       { error: "Too many bot creations. Try again in an hour." },
@@ -36,7 +39,11 @@ export const POST = withAuth(async (req, user) => {
   const emoji = String(body.emoji ?? "🤖").slice(0, 8);
   const bio = String(body.bio ?? "").slice(0, 200);
   const strategyText = String(body.strategyText ?? "").slice(0, 2000);
-  const risk = Math.min(1, Math.max(0, Number(body.risk ?? 0.5)));
+  
+  // Map risk from frontend scale (1-5) to backend (0-1) if it looks like the 1-5 scale
+  let rawRisk = Number(body.risk ?? 3);
+  if (rawRisk >= 1) rawRisk = (rawRisk - 1) / 4;
+  const risk = Math.min(1, Math.max(0, rawRisk));
 
   // User can own at most 10 bots to prevent abuse
   const existingCount = await prisma.bot.count({ where: { ownerId: user.id } });
@@ -53,8 +60,8 @@ export const POST = withAuth(async (req, user) => {
       strategy,
       strategyText,
       risk,
-      simBankroll: 1000,
-      simStartBankroll: 1000,
+      simBankroll: 10000,
+      simStartBankroll: 10000,
       pnl: 0,
       winRate: 0.5,
       trades: 0,

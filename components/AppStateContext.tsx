@@ -59,6 +59,7 @@ interface AppState {
   backerCountByBot: Record<string, number>;
 
   refetchAll: () => void;
+  isAdmin: boolean;
 }
 
 const AppStateContext = createContext<AppState | null>(null);
@@ -167,12 +168,14 @@ export function AppStateProvider({
     platformBackedByBot,
     backerCountByBot,
     refetchAll,
+    isAdmin: me?.user?.isAdmin ?? false,
   }), [
     getMyBackedAmount, getPlatformBackedAmount, getBackerCount, backBot,
     notifications, unreadCount, markAllRead, clear,
     toasts, dismissToast, pushToast,
     hasOnboarded, setHasOnboarded, myBotIds, addMyBot,
     platformBackedByBot, backerCountByBot, refetchAll,
+    me?.user?.isAdmin
   ]);
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
